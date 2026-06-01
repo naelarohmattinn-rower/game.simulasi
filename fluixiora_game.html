@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluixiora — Pipe Blast Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Nunito',sans-serif;background:#0a1628;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+
+.game-wrap{width:100%;max-width:700px;padding:16px;display:flex;flex-direction:column;gap:12px}
+
+.title-bar{text-align:center}
+.title-bar h1{font-family:'Bebas Neue',sans-serif;font-size:42px;letter-spacing:5px;background:linear-gradient(90deg,#02A8E2,#ffffff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.title-bar p{font-size:13px;color:rgba(255,255,255,0.5);letter-spacing:1px}
+
+/* CANVAS */
+.canvas-wrap{position:relative;width:100%;border-radius:16px;overflow:hidden;border:1px solid rgba(2,168,226,0.3);background:linear-gradient(180deg,#0d2137 0%,#0a1a2e 100%)}
+canvas{display:block;width:100%;height:auto}
+
+/* CLUE */
+.clue-box{background:rgba(2,168,226,0.08);border:1px solid rgba(2,168,226,0.25);border-radius:12px;padding:12px 16px;text-align:center}
+.clue-box span{font-size:13px;color:rgba(255,255,255,0.7)}
+.clue-box strong{color:#02A8E2}
+
+/* CONTROLS */
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ctrl-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px}
+.ctrl-label{font-size:11px;color:#02A8E2;font-weight:800;letter-spacing:1.5px;margin-bottom:10px;display:flex;justify-content:space-between}
+.ctrl-label span{color:#fff;font-size:13px}
+input[type=range]{width:100%;-webkit-appearance:none;height:6px;border-radius:3px;background:rgba(255,255,255,0.15);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:#02A8E2;cursor:pointer;box-shadow:0 0 8px rgba(2,168,226,0.6)}
+
+/* INFO BAR */
+.info-bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.info-chip{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 14px;font-size:12px;color:rgba(255,255,255,0.7)}
+.info-chip strong{color:#02A8E2}
+
+/* WIN */
+.win-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.7);display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;backdrop-filter:blur(4px)}
+.win-overlay.show{display:flex}
+.win-emoji{font-size:72px;animation:bounce 0.6s ease infinite alternate}
+@keyframes bounce{from{transform:translateY(0)}to{transform:translateY(-12px)}}
+.win-title{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:4px;color:#F1C40F}
+.win-sub{font-size:14px;color:rgba(255,255,255,0.7);text-align:center;max-width:280px;line-height:1.6}
+.win-btn{padding:12px 32px;border-radius:10px;border:none;background:#02A8E2;color:#0a1628;font-size:16px;font-weight:800;font-family:'Nunito',sans-serif;cursor:pointer;margin-top:8px}
+
+.reset-btn{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-size:14px;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer}
+.reset-btn:hover{background:rgba(255,255,255,0.12)}
+</style>
+</head>
+<body>
+<div class="game-wrap">
+  <div class="title-bar">
+    <h1>PIPE BLAST</h1>
+    <p>FLUIXIORA · SIMULASI BERNOULLI</p>
+  </div>
+
+  <div class="clue-box">
+    <span>🎯 <strong>Jatuhkan bendanya!</strong> — Atur <strong>luas penampang</strong> dan <strong>posisi benda</strong> agar semburan air tepat sasaran</span>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="gc" width="700" height="340"></canvas>
+    <div class="win-overlay" id="win">
+      <div class="win-emoji">💥</div>
+      <div class="win-title">KENA!</div>
+      <div class="win-sub">Semburan air berhasil menjatuhkan benda!<br><br>Semakin kecil penampang → kecepatan makin tinggi → tekanan makin rendah (Bernoulli!)</div>
+      <button class="win-btn" onclick="resetGame()">Main Lagi</button>
+    </div>
+  </div>
+
+  <div class="info-bar" id="info-bar">
+    <div class="info-chip">v = <strong id="v-val">-</strong> m/s</div>
+    <div class="info-chip">A = <strong id="a-val">-</strong> cm²</div>
+    <div class="info-chip">Jangkauan = <strong id="r-val">-</strong> m</div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-card">
+      <div class="ctrl-label">LUAS PENAMPANG <span id="area-label">50 cm²</span></div>
+      <input type="range" id="area-slider" min="5" max="100" value="50" oninput="onAreaChange()">
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-label">POSISI BENDA <span id="pos-label">tengah</span></div>
+      <input type="range" id="pos-slider" min="10" max="90" value="60" oninput="onPosChange()">
+    </div>
+  </div>
+
+  <button class="reset-btn" onclick="resetGame()">🔄 Reset</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = 700, H = 340;
+
+// Physics constants
+const A0 = 200; // source area cm²
+const v0 = 3;   // source velocity m/s
+const g = 10;
+const PIPE_H = 160; // pipe exit height from ground (px)
+const GROUND_Y = 300;
+const PIPE_X = 80;
+
+// State
+let area = 50;
+let blockX = 60; // percent
+let blockFalling = false;
+let blockVelY = 0;
+let blockY = 0;
+let blockAngle = 0;
+let won = false;
+let particles = [];
+let splashes = [];
+
+function getBlockXpx() { return PIPE_X + 80 + (blockX / 100) * (W - PIPE_X - 160); }
+function getBlockYpx() { return blockFalling ? blockY : GROUND_Y - 60; }
+
+// Bernoulli: A1v1 = A2v2
+function getVelocity() { return (A0 * v0) / area; }
+
+// Projectile: how far water travels from pipe exit
+// Exit at height PIPE_H above ground, horizontal velocity v
+function getRange() {
+  const v = getVelocity();
+  const h = (GROUND_Y - PIPE_H) / 80; // convert px to meters (scale)
+  const t = Math.sqrt(2 * h / g);
+  return v * t; // meters
+}
+
+function getRangePx() {
+  const v = getVelocity();
+  // Scale: 1 m = 60px
+  const h = (GROUND_Y - PIPE_H);
+  const t = Math.sqrt(2 * (h / 80) / g);
+  return v * t * 60;
+}
+
+// ── PARTICLES ──
+function spawnParticles() {
+  if (won) return;
+  const v = getVelocity();
+  const speed = Math.min(v * 1.8, 28);
+  for (let i = 0; i < 3; i++) {
+    particles.push({
+      x: PIPE_X + 18,
+      y: PIPE_H,
+      vx: speed + (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 1.5,
+      life: 1,
+      size: 3 + Math.random() * 2,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.vy += 0.4; // gravity
+    p.y += p.vy;
+    p.life -= 0.025;
+    if (p.life <= 0 || p.y > GROUND_Y) {
+      // splash
+      splashes.push({x: p.x, y: GROUND_Y, life: 1, size: p.size * 1.5});
+      particles.splice(i, 1);
+    }
+  }
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    splashes[i].life -= 0.06;
+    if (splashes[i].life <= 0) splashes.splice(i, 1);
+  }
+}
+
+function checkHit() {
+  if (won || blockFalling) return;
+  const rangePx = getRangePx();
+  const bx = getBlockXpx();
+  const hitX = PIPE_X + 18 + rangePx;
+  if (Math.abs(hitX - bx) < 30) {
+    blockFalling = true;
+    blockVelY = -2;
+    blockY = GROUND_Y - 60;
+  }
+}
+
+// ── DRAW ──
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0d2137');
+  bg.addColorStop(1, '#0a1628');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines (subtle)
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  // Ground
+  ctx.fillStyle = '#1C4060';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.strokeStyle = '#02A8E2';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, GROUND_Y); ctx.lineTo(W, GROUND_Y); ctx.stroke();
+
+  // Wall
+  ctx.fillStyle = '#1a3a55';
+  ctx.fillRect(0, 0, PIPE_X - 10, GROUND_Y);
+  ctx.strokeStyle = 'rgba(2,168,226,0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(PIPE_X - 10, 0); ctx.lineTo(PIPE_X - 10, GROUND_Y); ctx.stroke();
+
+  // Pipe
+  const pipeW = Math.max(4, (area / 100) * 28);
+  const pipeTop = PIPE_H - pipeW / 2;
+  const pipeBot = PIPE_H + pipeW / 2;
+
+  // Pipe body
+  ctx.fillStyle = '#065A82';
+  ctx.fillRect(0, pipeTop - 4, PIPE_X - 10, pipeW + 8);
+  // Pipe opening highlight
+  ctx.fillStyle = '#02A8E2';
+  ctx.fillRect(PIPE_X - 12, pipeTop, 6, pipeW);
+
+  // Pipe label
+  ctx.fillStyle = 'rgba(2,168,226,0.8)';
+  ctx.font = '700 11px Nunito';
+  ctx.fillText(`A = ${area} cm²`, 4, pipeTop - 8);
+
+  // Water stream (trajectory arc)
+  const v = getVelocity();
+  const scaleX = Math.min(v * 1.8, 26);
+  ctx.strokeStyle = `rgba(2,168,226,0.25)`;
+  ctx.lineWidth = pipeW * 0.7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(PIPE_X + 18, PIPE_H);
+  let tx = PIPE_X + 18, ty = PIPE_H;
+  const steps = 40;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const dt = t * (GROUND_Y - PIPE_H) / (0.4 * g) * 0.18;
+    tx = PIPE_X + 18 + scaleX * dt * 60;
+    ty = PIPE_H + 0.5 * g * dt * dt * 80;
+    if (ty > GROUND_Y) { ty = GROUND_Y; ctx.lineTo(tx, ty); break; }
+    ctx.lineTo(tx, ty);
+  }
+  ctx.stroke();
+
+  // Particles
+  particles.forEach(p => {
+    const alpha = p.life;
+    ctx.fillStyle = `rgba(100,200,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Splashes
+  splashes.forEach(sp => {
+    ctx.fillStyle = `rgba(100,200,255,${sp.life * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.size * (1 - sp.life) * 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Range indicator
+  const rangePx = getRangePx();
+  const hitX = PIPE_X + 18 + rangePx;
+  ctx.strokeStyle = 'rgba(241,196,15,0.4)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(hitX, PIPE_H); ctx.lineTo(hitX, GROUND_Y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(241,196,15,0.8)';
+  ctx.font = '700 10px Nunito';
+  ctx.fillText('target', hitX - 16, PIPE_H - 8);
+
+  // Block (benda)
+  const bx = getBlockXpx();
+  let by = getBlockYpx();
+  if (blockFalling) {
+    blockVelY += 0.5;
+    blockY += blockVelY;
+    blockAngle += 0.08;
+    by = blockY;
+    if (blockY > GROUND_Y + 20 && !won) {
+      won = true;
+      document.getElementById('win').classList.add('show');
+    }
+  }
+
+  ctx.save();
+  ctx.translate(bx, by + 30);
+  ctx.rotate(blockFalling ? blockAngle : 0);
+  // Block shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(-14, 28, 28, 6);
+  // Block body
+  const grad = ctx.createLinearGradient(-14, -30, 14, 30);
+  grad.addColorStop(0, '#8B5E3C');
+  grad.addColorStop(1, '#5C3D1E');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(-14, -30, 28, 60, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+
+  // Block position label
+  if (!blockFalling) {
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '700 10px Nunito';
+    ctx.fillText(`x = ${Math.round((bx - PIPE_X - 18) / 60 * 10) / 10} m`, bx - 16, GROUND_Y - 72);
+  }
+
+  // Physics info
+  const vms = getVelocity().toFixed(1);
+  const rm = (getRangePx() / 60).toFixed(2);
+  document.getElementById('v-val').textContent = vms;
+  document.getElementById('a-val').textContent = area;
+  document.getElementById('r-val').textContent = rm;
+}
+
+function loop() {
+  if (!won) {
+    spawnParticles();
+    updateParticles();
+    checkHit();
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function onAreaChange() {
+  area = parseInt(document.getElementById('area-slider').value);
+  document.getElementById('area-label').textContent = area + ' cm²';
+}
+
+function onPosChange() {
+  blockX = parseInt(document.getElementById('pos-slider').value);
+  const bx = getBlockXpx();
+  const dist = ((bx - PIPE_X - 18) / 60).toFixed(1);
+  document.getElementById('pos-label').textContent = dist + ' m';
+}
+
+function resetGame() {
+  won = false;
+  blockFalling = false;
+  blockVelY = 0;
+  blockY = 0;
+  blockAngle = 0;
+  particles = [];
+  splashes = [];
+  document.getElementById('win').classList.remove('show');
+  document.getElementById('area-slider').value = 50;
+  document.getElementById('pos-slider').value = 60;
+  area = 50;
+  blockX = 60;
+  onAreaChange();
+  onPosChange();
+}
+
+onAreaChange();
+onPosChange();
+loop();
+</script>
+</body>
+</html>
